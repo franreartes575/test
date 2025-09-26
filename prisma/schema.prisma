@@ -1,0 +1,317 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum Estado {
+  ACTIVO
+  INACTIVO
+}
+
+enum RolUsuario {
+  GERENTE      // Gerente
+  PROFESIONAL  // Profesional
+  RECEPCIONISTA // Recepcionista
+  PACIENTE     // Paciente (para portal del paciente)
+}
+
+enum EstadoTurno {
+  PROGRAMADO   // Confirmado
+  COMPLETADO   // Atendido
+  CANCELADO    // Cancelado
+  AUSENTE      // Ausente
+  EN_CURSO     // En curso
+  EN_ESPERA    // En espera
+}
+
+enum Prioridad {
+  BAJA
+  NORMAL
+  ALTA
+  URGENTE
+  CONTROL
+}
+
+enum Genero {
+  MASCULINO
+  FEMENINO
+  OTRO
+}
+
+enum MetodoPago {
+  EFECTIVO
+  TARJETA
+  OBRA_SOCIAL
+  TRANSFERENCIA
+}
+
+enum DiaSemana {
+  LUNES
+  MARTES
+  MIERCOLES
+  JUEVES
+  VIERNES
+  SABADO
+  DOMINGO
+}
+
+enum EstadoNotificacion {
+  PENDIENTE
+  ENVIADO
+  FALLIDO
+}
+
+// Modelos
+
+model Usuario {
+  id                Int         @id @default(autoincrement())
+  nombre_usuario    String      @unique
+  email             String      @unique
+  contrasena        String      // Debe ser cifrada en la aplicación
+  rol               RolUsuario
+  estado            Estado      @default(ACTIVO)
+  fecha_creacion    DateTime    @default(now())
+  fecha_actualizacion DateTime  @updatedAt
+  creado_por        Int?        // Para auditoría
+  actualizado_por   Int?        // Para auditoría
+
+  // Relaciones
+  profesional       Profesional?
+  paciente          Paciente?
+ 
+
+  @@map("usuarios")
+}
+
+model Especialidad {
+  id                Int      @id @default(autoincrement())
+  nombre            String   @unique
+  descripcion       String   @default("")
+  estado            Estado   @default(ACTIVO)
+  fecha_creacion    DateTime @default(now())
+  fecha_actualizacion DateTime @updatedAt
+  creado_por        Int?
+  actualizado_por   Int?
+
+  // Relaciones
+  profesionales     Profesional[]
+
+  @@map("especialidades")
+}
+
+model Profesional {
+  id                    Int       @id @default(autoincrement())
+  usuario_id            Int?      @unique
+  nombre                String
+  apellido              String
+  especialidad_id       Int
+  numero_matricula      String    @unique // Matrícula
+  telefono              String    @default("")
+  email                 String    @default("")
+  duracion_consulta     Int       @default(30) // en minutos
+  costo_consulta        Decimal   @default(0) @db.Decimal(10, 2)
+  obras_sociales        String    @default("") // Obras sociales separadas por comas
+  estado                Estado    @default(ACTIVO)
+  fecha_creacion        DateTime  @default(now())
+  fecha_actualizacion   DateTime  @updatedAt
+  creado_por            Int?
+  actualizado_por       Int?
+
+  // Relaciones
+  usuario               Usuario?            @relation(fields: [usuario_id], references: [id])
+  especialidad          Especialidad        @relation(fields: [especialidad_id], references: [id])
+  horarios              HorarioProfesional[]
+  turnos                Turno[]
+  historias_clinicas    HistoriaClinica[]
+  reportes              Reporte[]
+
+  @@map("profesionales")
+}
+
+model HorarioProfesional {
+  id                  Int       @id @default(autoincrement())
+  profesional_id      Int
+  dia_semana          DiaSemana
+  hora_inicio         String    // Formato "HH:MM"
+  hora_fin            String    // Formato "HH:MM"
+  duracion_turno      Int       @default(30) // Duración de cada turno en minutos
+  estado              Estado    @default(ACTIVO)
+  fecha_creacion      DateTime  @default(now())
+  fecha_actualizacion DateTime  @updatedAt
+  creado_por          Int?
+  actualizado_por     Int?
+
+  // Relaciones
+  profesional         Profesional @relation(fields: [profesional_id], references: [id], onDelete: Cascade)
+
+  @@unique([profesional_id, dia_semana])
+  @@map("horarios_profesionales")
+}
+
+model Paciente {
+  id                      Int       @id @default(autoincrement())
+  usuario_id              Int?      @unique // Para portal del paciente
+  nombre                  String
+  apellido                String
+  dni                     String    @unique
+  fecha_nacimiento        DateTime?
+  genero                  Genero?
+  telefono                String    @default("")
+  email                   String    @default("")
+  direccion               String    @default("")
+  obra_social             String    @default("")
+  numero_afiliado         String    @default("")
+  contacto_emergencia     String    @default("")
+  observaciones           String    @default("")
+  token_reset_contrasena  String?   // Para recuperación de contraseña
+  expira_reset_contrasena DateTime?
+  estado                  Estado    @default(ACTIVO)
+  fecha_creacion          DateTime  @default(now())
+  fecha_actualizacion     DateTime  @updatedAt
+  creado_por              Int?
+  actualizado_por         Int?
+
+  // Relaciones
+  usuario                 Usuario?           @relation(fields: [usuario_id], references: [id])
+  turnos                  Turno[]
+  historias_clinicas      HistoriaClinica[]
+  notificaciones          Notificacion[]
+
+  @@map("pacientes")
+}
+
+model Turno {
+  id                      Int           @id @default(autoincrement())
+  paciente_id             Int
+  profesional_id          Int
+  fecha_turno             DateTime      @db.Date
+  hora_turno              String        // Formato "HH:MM"
+  duracion                Int           @default(30) // en minutos
+  estado                  EstadoTurno   @default(PROGRAMADO)
+  prioridad               Prioridad     @default(NORMAL)
+  motivo                  String        @default("")
+  observaciones           String        @default("")
+  costo                   Decimal       @default(0) @db.Decimal(10, 2)
+  metodo_pago             MetodoPago?
+  motivo_cancelacion      String        @default("") // Para cancelaciones desde portal
+  cancelado_por_paciente  Boolean       @default(false) // Si fue cancelado por el paciente
+  fecha_creacion          DateTime      @default(now())
+  fecha_actualizacion     DateTime      @updatedAt
+  creado_por              Int?
+  actualizado_por         Int?
+
+  // Relaciones
+  paciente                Paciente           @relation(fields: [paciente_id], references: [id])
+  profesional             Profesional        @relation(fields: [profesional_id], references: [id])
+  historia_clinica        HistoriaClinica?
+  notificaciones          Notificacion[]
+
+  @@map("turnos")
+}
+
+model HistoriaClinica {
+  id                      Int      @id @default(autoincrement())
+  paciente_id             Int
+  profesional_id          Int
+  turno_id                Int?     @unique
+  fecha_visita            DateTime @db.Date
+  diagnostico             String   @default("")
+  tratamiento             String   @default("")
+  medicamentos            String   @default("")
+  evolucion               String   @default("") // Evolución del paciente
+  observaciones           String   @default("")
+  peso                    Decimal? @db.Decimal(5, 2) // en kg
+  altura                  Decimal? @db.Decimal(5, 2) // en cm
+  presion_arterial        String   @default("") // Ej: "120/80"
+  temperatura             Decimal? @db.Decimal(4, 1) // en °C
+  archivos_adjuntos       String   @default("") // URLs o paths de archivos PDF, JPG, PNG
+  fecha_seguimiento       DateTime? @db.Date
+  es_adenda               Boolean  @default(false) // Para correcciones/adendas
+  entrada_original_id     Int?     // Referencia a la entrada original si es adenda
+  estado                  Estado   @default(ACTIVO)
+  fecha_creacion          DateTime @default(now())
+  fecha_actualizacion     DateTime @updatedAt
+  creado_por              Int      // Profesional que creó la entrada (obligatorio)
+
+  // Relaciones
+  paciente                Paciente           @relation(fields: [paciente_id], references: [id])
+  profesional             Profesional        @relation(fields: [profesional_id], references: [id])
+  turno                   Turno?             @relation(fields: [turno_id], references: [id])
+  entrada_original        HistoriaClinica?   @relation("AdendaHistoria", fields: [entrada_original_id], references: [id])
+  adendas                 HistoriaClinica[]  @relation("AdendaHistoria")
+
+  @@map("historias_clinicas")
+}
+
+model Notificacion {
+  id                Int                 @id @default(autoincrement())
+  paciente_id       Int
+  turno_id          Int?
+  tipo              String              // "RECORDATORIO_TURNO", "CONFIRMACION_CANCELACION", etc.
+  asunto            String
+  mensaje           String
+  email_destino     String
+  estado            EstadoNotificacion  @default(PENDIENTE)
+  programada_para   DateTime            // Cuándo debe enviarse (48h antes para recordatorios)
+  enviada_en        DateTime?           // Cuándo se envió realmente
+  mensaje_error     String?             // Si falló el envío
+  intentos          Int                 @default(0) // Número de intentos de envío
+  fecha_creacion    DateTime            @default(now())
+  fecha_actualizacion DateTime          @updatedAt
+
+  // Relaciones
+  paciente          Paciente      @relation(fields: [paciente_id], references: [id])
+  turno             Turno?        @relation(fields: [turno_id], references: [id])
+
+  @@map("notificaciones")
+}
+
+model Reporte {
+  id                            Int      @id @default(autoincrement())
+  profesional_id                Int
+  fecha_inicio                  DateTime @db.Date
+  fecha_fin                     DateTime @db.Date
+  turnos_atendidos              Int      @default(0) // Turnos atendidos
+  turnos_cancelados             Int      @default(0) // Turnos cancelados
+  turnos_ausentes               Int      @default(0) // Ausencias
+  total_turnos                  Int      @default(0) // Total de turnos
+  tasa_ausentismo               Decimal  @default(0) @db.Decimal(5, 2) // Tasa de ausentismo
+  promedio_consultas_diarias    Decimal  @default(0) @db.Decimal(5, 2)
+  ingresos_totales              Decimal  @default(0) @db.Decimal(10, 2)
+  tiempo_espera_promedio        Decimal  @default(0) @db.Decimal(8, 2) // Tiempo promedio de espera
+  cantidad_pacientes_nuevos     Int      @default(0) // Pacientes nuevos en el período
+  estado                        Estado   @default(ACTIVO)
+  fecha_creacion                DateTime @default(now())
+  fecha_actualizacion           DateTime @updatedAt
+  creado_por                    Int?
+
+  // Relaciones
+  profesional                   Profesional @relation(fields: [profesional_id], references: [id])
+
+  @@map("reportes")
+}
+
+// Tabla para rastrear métricas globales del centro médico
+model MetricasCentro {
+  id                    Int      @id @default(autoincrement())
+  fecha                 DateTime @db.Date @unique
+  total_turnos          Int      @default(0)
+  turnos_atendidos      Int      @default(0)
+  turnos_cancelados     Int      @default(0)
+  turnos_ausentes       Int      @default(0)
+  pacientes_nuevos      Int      @default(0)
+  ingresos_totales      Decimal  @default(0) @db.Decimal(12, 2)
+  tasa_ausentismo       Decimal  @default(0) @db.Decimal(5, 2)
+  fecha_creacion        DateTime @default(now())
+  fecha_actualizacion   DateTime @updatedAt
+
+  @@map("metricas_centro")
+}
