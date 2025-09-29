@@ -1,0 +1,153 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id            String       @id @default(cuid())
+  username      String       @unique
+  passwordHash  String       @map("password_hash")
+  rol           Rol
+  profesionalId String?      @map("profesional_id")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  profesional   Profesional? @relation(fields: [profesionalId], references: [id])
+
+  @@map("usuarios")
+}
+
+model Paciente {
+  id              String            @id @default(cuid())
+  nombre          String
+  apellido        String
+  dni             String            @unique
+  fechaNacimiento DateTime          @map("fecha_nacimiento")
+  sexo            Sexo
+  telefono        String?
+  email           String?
+  direccion       String?
+  activo          Boolean           @default(true)
+  fechaAlta       DateTime          @default(now()) @map("fecha_alta")
+  historiaClinica HistoriaClinica[]
+  turnos          Turno[]
+
+  @@map("pacientes")
+}
+
+model Especialidad {
+  id            String        @id @default(cuid())
+  nombre        String        @unique
+  descripcion   String?
+  profesionales Profesional[]
+
+  @@map("especialidades")
+}
+
+model Profesional {
+  id                String              @id @default(cuid())
+  nombre            String
+  apellido          String
+  matricula         String              @unique
+  especialidadId    String              @map("especialidad_id")
+  telefono          String?
+  email             String?
+  activo            Boolean             @default(true)
+  fechaAlta         DateTime            @default(now()) @map("fecha_alta")
+  historiaClinica   HistoriaClinica[]
+  turnos            Turno[]
+  agendaProfesional AgendaProfesional[]
+  especialidad      Especialidad        @relation(fields: [especialidadId], references: [id])
+  reportes          Reporte[]
+  usuarios          Usuario[]
+
+  @@map("profesionales")
+}
+
+model Turno {
+  id              String            @id @default(cuid())
+  pacienteId      String
+  profesionalId   String
+  fecha           DateTime
+  estado          EstadoTurno       @default(PENDIENTE)
+  motivo          String?
+  observaciones   String?
+  fechaAlta       DateTime          @default(now())
+  historiaClinica HistoriaClinica[]
+  paciente        Paciente          @relation(fields: [pacienteId], references: [id])
+  profesional     Profesional       @relation(fields: [profesionalId], references: [id])
+}
+
+model HistoriaClinica {
+  id            String      @id @default(cuid())
+  turnoId       String
+  pacienteId    String
+  profesionalId String
+  fecha         DateTime    @default(now())
+  observaciones String
+  diagnostico   String?
+  tratamiento   String?
+  paciente      Paciente    @relation(fields: [pacienteId], references: [id])
+  profesional   Profesional @relation(fields: [profesionalId], references: [id])
+  turno         Turno       @relation(fields: [turnoId], references: [id])
+}
+
+model AgendaProfesional {
+  id            String      @id @default(cuid())
+  profesionalId String      @map("profesional_id")
+  diaSemana     DiaSemana   @map("dia_semana")
+  horaInicio    DateTime    @map("hora_inicio")
+  horaFin       DateTime    @map("hora_fin")
+  duracionTurno Int         @map("duracion_turno")
+  profesional   Profesional @relation(fields: [profesionalId], references: [id])
+
+  @@unique([profesionalId, diaSemana])
+  @@map("agenda_profesional")
+}
+
+model Reporte {
+  id                       String      @id @default(cuid())
+  profesionalId            String      @map("profesional_id")
+  fechaInicio              DateTime    @map("fecha_inicio")
+  fechaFin                 DateTime    @map("fecha_fin")
+  cantTurnosAtendidos      Int         @map("cant_turnos_atendidos")
+  cantTurnosCancelados     Int         @map("cant_turnos_cancelados")
+  promedioConsultasDiarias Float       @map("promedio_consultas_diarias")
+  createdAt                DateTime    @default(now()) @map("created_at")
+  profesional              Profesional @relation(fields: [profesionalId], references: [id])
+
+  @@map("reportes")
+}
+
+enum Rol {
+  GERENTE
+  RECEPCIONISTA
+  PROFESIONAL
+}
+
+enum Sexo {
+  MASCULINO
+  FEMENINO
+  OTRO
+}
+
+enum EstadoTurno {
+  PENDIENTE
+  CONFIRMADO
+  ATENDIDO
+  CANCELADO
+  AUSENTE
+}
+
+enum DiaSemana {
+  LUNES
+  MARTES
+  MIERCOLES
+  JUEVES
+  VIERNES
+  SABADO
+  DOMINGO
+}
